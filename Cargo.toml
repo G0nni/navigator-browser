@@ -1,0 +1,70 @@
+[package]
+name = "navigator"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "A secure, high-performance web browser with vertical tabs built in Rust"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = []
+
+[dependencies]
+# Custom browser components - Lightweight version for Windows compatibility
+# HTML/CSS Parsing
+html5ever = "0.27"
+markup5ever_rcdom = "0.3"
+
+# Async runtime
+tokio = { version = "1.40", features = ["full"] }
+async-trait = "0.1"
+
+# Networking & Security
+reqwest = { version = "0.12", features = ["rustls-tls", "blocking"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+rustls-native-certs = "0.8"
+webpki-roots = "0.26"
+
+# URL parsing
+url = "2.5"
+
+# Database & Storage
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# UUID generation
+uuid = { version = "1.10", features = ["v4", "serde"] }
+
+# Date/Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Configuration
+config = "0.14"
+
+[build-dependencies]
+# Removed Tauri
+
+[dev-dependencies]
+mockall = "0.13"
+tokio-test = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true
