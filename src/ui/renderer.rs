@@ -5,7 +5,10 @@ use winit::window::Window;
 use anyhow::Result;
 use std::sync::Arc;
 use super::text_renderer::TextRenderer;
+use super::address_bar::AddressBar;
 use glyphon::{TextArea, TextBounds, Color as GlyphonColor};
+
+const ADDRESS_BAR_HEIGHT: f32 = 50.0;
 
 /// GPU renderer using wgpu
 pub struct Renderer {
@@ -104,7 +107,7 @@ impl Renderer {
         }
     }
 
-    pub fn render(&mut self, html_content: &str) -> Result<()> {
+    pub fn render(&mut self, html_content: &str, address_bar: &AddressBar) -> Result<()> {
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
@@ -125,9 +128,9 @@ impl Renderer {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 1.0,
-                            g: 1.0,
-                            b: 1.0,
+                            r: 0.95,
+                            g: 0.95,
+                            b: 0.95,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
@@ -139,38 +142,68 @@ impl Renderer {
             });
         }
 
-        // Render text content
-        if !html_content.is_empty() {
-            let buffer = self.text_renderer.create_buffer(
-                html_content,
-                16.0,
-                self.size.width,
-                self.size.height
-            );
+        // Create buffers (must live until render call)
+        let address_bar_buffer = address_bar.create_buffer(
+            self.text_renderer.font_system(),
+            self.size.width as f32,
+        );
 
-            let text_area = TextArea {
-                buffer: &buffer,
+        let content_buffer = if !html_content.is_empty() {
+            Some(self.text_renderer.create_buffer(
+                html_content,
+                14.0,
+                self.size.width,
+                self.size.height - ADDRESS_BAR_HEIGHT as u32
+            ))
+        } else {
+            None
+        };
+
+        // Build text areas
+        let mut text_areas = Vec::new();
+
+        // Address bar
+        text_areas.push(TextArea {
+            buffer: &address_bar_buffer,
+            left: 10.0,
+            top: 10.0,
+            scale: 1.0,
+            bounds: TextBounds {
+                left: 0,
+                top: 0,
+                right: self.size.width as i32,
+                bottom: ADDRESS_BAR_HEIGHT as i32,
+            },
+            default_color: address_bar.text_color(),
+            custom_glyphs: &[],
+        });
+
+        // Page content
+        if let Some(ref buffer) = content_buffer {
+            text_areas.push(TextArea {
+                buffer,
                 left: 20.0,
-                top: 20.0,
+                top: ADDRESS_BAR_HEIGHT + 20.0,
                 scale: 1.0,
                 bounds: TextBounds {
                     left: 0,
-                    top: 0,
+                    top: ADDRESS_BAR_HEIGHT as i32,
                     right: self.size.width as i32,
                     bottom: self.size.height as i32,
                 },
                 default_color: GlyphonColor::rgb(0, 0, 0),
                 custom_glyphs: &[],
-            };
-
-            self.text_renderer.render(
-                &self.device,
-                &self.queue,
-                &view,
-                &mut encoder,
-                vec![text_area],
-            )?;
+            });
         }
+
+        // Render all text
+        self.text_renderer.render(
+            &self.device,
+            &self.queue,
+            &view,
+            &mut encoder,
+            text_areas,
+        )?;
 
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();

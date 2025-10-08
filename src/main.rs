@@ -9,14 +9,14 @@ pub mod ui;
 use application::BrowserState;
 use infrastructure::{SqliteDatabase, DefaultSecurityService, SecureNetworkClient, ServoRenderer};
 use domain::{Tab, SecurityService, RenderingEngine};
-use ui::{BrowserWindow, Renderer};
+use ui::{BrowserWindow, Renderer, AddressBar, AddressBarAction};
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use winit::{
-    event::{Event, WindowEvent, KeyEvent},
+    event::{Event, WindowEvent, KeyEvent, ElementState},
     event_loop::{EventLoop, ControlFlow},
-    keyboard::{Key, NamedKey},
+    keyboard::{Key, NamedKey, PhysicalKey},
 };
 
 struct Navigator {
@@ -130,10 +130,15 @@ fn main() -> anyhow::Result<()> {
         Renderer::new(window.window()).await
     })?;
 
+    // Create address bar
+    let mut address_bar = AddressBar::new();
+
     println!("✓ Window created");
     println!("✓ GPU renderer initialized");
+    println!("✓ Address bar ready");
     println!("✓ Loading example.com...\n");
     println!("Controls:");
+    println!("  Type URL and press Enter to navigate");
     println!("  F5 - Reload");
     println!("  ESC - Quit\n");
 
@@ -152,12 +157,44 @@ fn main() -> anyhow::Result<()> {
                     renderer.resize(physical_size);
                     window.request_redraw();
                 }
-                WindowEvent::KeyboardInput { event, .. } => {
-                    handle_keyboard_input(&event, &navigator, &runtime, &window);
+                WindowEvent::KeyboardInput { event: key_event, .. } => {
+                    if key_event.state == ElementState::Pressed {
+                        let text = key_event.text.as_ref().map(|s| s.as_str());
+                        if let Some(action) = address_bar.handle_key(&key_event.logical_key, text) {
+                            match action {
+                                AddressBarAction::Navigate(url) => {
+                                    tracing::info!("Navigating to: {}", url);
+                                    let nav_clone = navigator.clone();
+                                    runtime.spawn(async move {
+                                        if let Err(e) = nav_clone.navigate_to(&url).await {
+                                            tracing::error!("Navigation error: {}", e);
+                                        }
+                                    });
+                                }
+                            }
+                        }
+
+                        // Handle special keys
+                        match key_event.logical_key {
+                            Key::Named(NamedKey::F5) => {
+                                tracing::info!("Refresh requested");
+                                let url = address_bar.url().to_string();
+                                let nav_clone = navigator.clone();
+                                runtime.spawn(async move {
+                                    if let Err(e) = nav_clone.navigate_to(&url).await {
+                                        tracing::error!("Navigation error: {}", e);
+                                    }
+                                });
+                            }
+                            _ => {}
+                        }
+
+                        window.request_redraw();
+                    }
                 }
                 WindowEvent::RedrawRequested => {
                     let html = navigator.get_current_html();
-                    if let Err(e) = renderer.render(&html) {
+                    if let Err(e) = renderer.render(&html, &address_bar) {
                         tracing::error!("Render error: {}", e);
                     }
                 }
@@ -171,32 +208,4 @@ fn main() -> anyhow::Result<()> {
     })?;
 
     Ok(())
-}
-
-fn handle_keyboard_input(
-    event: &KeyEvent,
-    navigator: &Arc<Navigator>,
-    runtime: &tokio::runtime::Runtime,
-    window: &BrowserWindow
-) {
-    if !event.state.is_pressed() {
-        return;
-    }
-
-    match event.logical_key {
-        Key::Named(NamedKey::F5) => {
-            tracing::info!("Refresh requested");
-            let nav_clone = navigator.clone();
-            runtime.spawn(async move {
-                if let Err(e) = nav_clone.navigate_to("https://example.com").await {
-                    tracing::error!("Navigation error: {}", e);
-                }
-            });
-            window.request_redraw();
-        }
-        Key::Named(NamedKey::Escape) => {
-            tracing::info!("Escape pressed - use window close button to quit");
-        }
-        _ => {}
-    }
 }
