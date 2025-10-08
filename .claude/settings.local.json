@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(cargo:*)",
-      "Bash(rustup target:*)"
+      "Bash(rustup target:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

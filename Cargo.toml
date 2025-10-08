@@ -52,6 +52,11 @@ chrono = { version = "0.4", features = ["serde"] }
 # Configuration
 config = "0.14"
 
+# Graphics & Windowing (Phase 2)
+winit = "0.30"
+wgpu = "22.0"
+pollster = "0.3"
+
 [build-dependencies]
 # Removed Tauri
 
