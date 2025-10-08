@@ -57,6 +57,9 @@ winit = "0.30"
 wgpu = "22.0"
 pollster = "0.3"
 
+# Text rendering
+glyphon = "0.6"
+
 [build-dependencies]
 # Removed Tauri
 

@@ -4,6 +4,8 @@ use wgpu::{
 use winit::window::Window;
 use anyhow::Result;
 use std::sync::Arc;
+use super::text_renderer::TextRenderer;
+use glyphon::{TextArea, TextBounds, Color as GlyphonColor};
 
 /// GPU renderer using wgpu
 pub struct Renderer {
@@ -12,6 +14,7 @@ pub struct Renderer {
     queue: Queue,
     config: SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
+    text_renderer: TextRenderer,
 }
 
 impl Renderer {
@@ -72,12 +75,22 @@ impl Renderer {
 
         surface.configure(&device, &config);
 
+        // Create text renderer
+        let text_renderer = TextRenderer::new(
+            &device,
+            &queue,
+            surface_format,
+            size.width,
+            size.height,
+        )?;
+
         Ok(Self {
             surface,
             device,
             queue,
             config,
             size,
+            text_renderer,
         })
     }
 
@@ -87,10 +100,11 @@ impl Renderer {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
+            self.text_renderer.resize(&self.device, &self.queue, new_size.width, new_size.height);
         }
     }
 
-    pub fn render(&mut self, _html_content: &str) -> Result<()> {
+    pub fn render(&mut self, html_content: &str) -> Result<()> {
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
@@ -102,17 +116,18 @@ impl Renderer {
                 label: Some("Render Encoder"),
             });
 
+        // Clear background
         {
             let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
+                label: Some("Background Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.95,
-                            g: 0.95,
-                            b: 0.97,
+                            r: 1.0,
+                            g: 1.0,
+                            b: 1.0,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
@@ -122,9 +137,39 @@ impl Renderer {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
+        }
 
-            // TODO: Render HTML content here
-            // For now, just clear with a nice gray background
+        // Render text content
+        if !html_content.is_empty() {
+            let buffer = self.text_renderer.create_buffer(
+                html_content,
+                16.0,
+                self.size.width,
+                self.size.height
+            );
+
+            let text_area = TextArea {
+                buffer: &buffer,
+                left: 20.0,
+                top: 20.0,
+                scale: 1.0,
+                bounds: TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: self.size.width as i32,
+                    bottom: self.size.height as i32,
+                },
+                default_color: GlyphonColor::rgb(0, 0, 0),
+                custom_glyphs: &[],
+            };
+
+            self.text_renderer.render(
+                &self.device,
+                &self.queue,
+                &view,
+                &mut encoder,
+                vec![text_area],
+            )?;
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
